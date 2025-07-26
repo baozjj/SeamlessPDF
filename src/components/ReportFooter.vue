@@ -1,7 +1,9 @@
 <template>
   <footer ref="el" class="report-footer">
-    <span>Confidential & Proprietary</span>
-    <span>Page {{ pageInfo.currentPage }} of {{ pageInfo.totalPages }}</span>
+    <span>机密文件 & 专有资料</span>
+    <span
+      >第 {{ pageInfo.currentPage }} 页，共 {{ pageInfo.totalPages }} 页</span
+    >
   </footer>
 </template>
 

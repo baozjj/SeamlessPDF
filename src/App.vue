@@ -22,13 +22,12 @@
 
 <script setup lang="ts">
 import { ref, reactive } from "vue";
-import type { ComponentPublicInstance } from "vue";
 import {
   Button as TButton,
   Icon as TIcon,
   MessagePlugin,
 } from "tdesign-vue-next";
-import { generateQuotePDF } from "@/pdf-generator/generateQuotePDF";
+import { generateIntelligentPdf } from "@/pdf-generator/generateQuotePDF";
 
 import ReportHeader from "@/components/ReportHeader.vue";
 import ReportContent from "@/components/ReportContent.vue";
@@ -36,38 +35,44 @@ import ReportFooter from "@/components/ReportFooter.vue";
 
 const isExporting = ref(false);
 
-// 使用refs获取组件实例，并通过$el获取其根DOM元素
-const reportHeader = ref<ComponentPublicInstance>();
-const reportContent = ref<ComponentPublicInstance>();
-const reportFooter = ref<ComponentPublicInstance>();
+const reportHeader = ref();
+const reportContent = ref();
+const reportFooter = ref();
 
 const footerState = reactive({ currentPage: 1, totalPages: 1 });
 
 const handleExport = async () => {
-  const headerEl = reportHeader.value?.$el as HTMLElement;
-  const contentEl = reportContent.value?.$el as HTMLElement;
-  const footerEl = reportFooter.value?.$el as HTMLElement;
+  const headerElement = reportHeader.value?.$el as HTMLElement;
+  const contentElement = reportContent.value?.$el as HTMLElement;
+  const footerElement = reportFooter.value?.$el as HTMLElement;
 
-  if (!headerEl || !contentEl || !footerEl) {
+  if (!headerElement || !contentElement || !footerElement) {
     MessagePlugin.error("报告组件尚未完全加载，请稍候重试。");
     return;
   }
+
   isExporting.value = true;
 
-  const pdf = await generateQuotePDF({
-    headerEl,
-    contentEl,
-    footerEl,
-    updateFooter: (pageIndex: number, totalPages: number) => {
-      footerState.currentPage = pageIndex;
-      footerState.totalPages = totalPages;
-    },
-  });
+  try {
+    const pdf = await generateIntelligentPdf({
+      headerElement,
+      contentElement,
+      footerElement,
+      onFooterUpdate: (currentPage: number, totalPages: number) => {
+        footerState.currentPage = currentPage;
+        footerState.totalPages = totalPages;
+      },
+    });
 
-  await pdf.save(`aaa.pdf`, {
-    returnPromise: true,
-  });
-  isExporting.value = false;
+    await pdf.save(`智能报告.pdf`, {
+      returnPromise: true,
+    });
+  } catch (error) {
+    console.error("PDF 生成失败:", error);
+    MessagePlugin.error("PDF 生成失败，请重试。");
+  } finally {
+    isExporting.value = false;
+  }
 };
 </script>
 

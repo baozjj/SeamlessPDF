@@ -1,7 +1,7 @@
 <template>
   <header ref="el" class="report-header">
-    <h1>Quarterly Business Report</h1>
-    <p>Generated on: {{ new Date().toLocaleDateString() }}</p>
+    <h1>季度业务报告</h1>
+    <p>生成日期：{{ new Date().toLocaleDateString() }}</p>
   </header>
 </template>
 

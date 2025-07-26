@@ -1,174 +1,339 @@
 import html2canvas from "html2canvas";
 
 /**
- * 将 DOM 元素渲染为 Canvas，自动根据设备 DPR 缩放
+ * 页面分析结果接口
  */
-export const captureCanvas = async (
-  el: HTMLElement
-): Promise<HTMLCanvasElement> => {
-  return await html2canvas(el, { scale: window.devicePixelRatio * 2 });
-};
+interface PageBreakAnalysisResult {
+  /** 是否为干净的分页点 */
+  isCleanBreakPoint: boolean;
+  /** 是否为表格边框 */
+  isTableBorder: boolean;
+}
 
 /**
- * 计算 canvas 缩放后在目标宽度下的高度（默认 A4 宽度）
+ * 最优分页点查找结果
  */
-export const getScaledHeight = (
+interface OptimalBreakPointResult {
+  /** 切割Y坐标 */
+  cutY: number;
+  /** 是否为表格边框 */
+  isTableBorder: boolean;
+}
+
+/**
+ * 缩放尺寸信息
+ */
+interface ScaledDimensions {
+  /** 缩放后宽度 */
+  width: number;
+  /** 缩放后高度 */
+  height: number;
+}
+
+/**
+ * 表格边框颜色常量（RGB格式）
+ */
+const TABLE_BORDER_RGB_COLOR = "221,221,221";
+
+/**
+ * 纯白色RGB值
+ */
+const PURE_WHITE_RGB_COLOR = "255,255,255";
+
+/**
+ * 表格线识别的最小占比阈值
+ */
+const TABLE_LINE_RATIO_THRESHOLD = 0.8;
+
+/**
+ * 默认白色像素判断阈值
+ */
+const DEFAULT_WHITE_PIXEL_THRESHOLD = 250;
+
+/**
+ * 默认空白页高度阈值（像素）
+ */
+const DEFAULT_BLANK_PAGE_HEIGHT_THRESHOLD = 200;
+
+/**
+ * 表格边框检测的向上偏移量（像素）
+ */
+const TABLE_BORDER_DETECTION_OFFSET = 4;
+
+/**
+ * 将 DOM 元素渲染为 Canvas
+ *
+ * 自动根据设备像素比进行缩放，确保在高DPI设备上的清晰度
+ *
+ * @param element - 要渲染的 DOM 元素
+ * @returns Promise<HTMLCanvasElement> - 渲染后的 Canvas 元素
+ */
+export async function captureElementAsCanvas(
+  element: HTMLElement
+): Promise<HTMLCanvasElement> {
+  return await html2canvas(element, {
+    scale: window.devicePixelRatio * 2,
+  });
+}
+
+/**
+ * 计算 Canvas 在指定目标宽度下的缩放尺寸
+ *
+ * @param canvas - 源 Canvas 元素
+ * @param targetWidth - 目标宽度，默认为 A4 纸张宽度
+ * @returns ScaledDimensions - 缩放后的尺寸信息
+ */
+export function calculateScaledDimensions(
   canvas: HTMLCanvasElement,
-  targetWidth = 595.28
-): number => {
-  return (targetWidth / canvas.width) * canvas.height;
-};
+  targetWidth: number = 595.28
+): ScaledDimensions {
+  const scaleFactor = targetWidth / canvas.width;
+  return {
+    width: targetWidth,
+    height: canvas.height * scaleFactor,
+  };
+}
 
 /**
- * 分析某行是否为干净分页线（纯白或表格边框）
+ * 分析指定行是否适合作为分页切割线
+ *
+ * 通过像素级分析判断该行是否为纯白空间或表格边框，
+ * 同时检测表格顶部边框以避免不当分割
+ *
+ * @param yCoordinate - 要分析的Y坐标
+ * @param canvas - 源 Canvas 元素
+ * @returns PageBreakAnalysisResult - 分析结果
  */
-export const analyzeCutLine = (y: number, canvas: HTMLCanvasElement) => {
-  // 获取2D绘图上下文
-  const ctx = canvas.getContext("2d")!;
-  // 获取当前行的图像数据（宽度覆盖整个canvas，高度1像素）
-  const imageData = ctx.getImageData(0, y, canvas.width, 1).data;
-  // 获取当前行上方4像素处的图像数据（用于后续判断表格顶部边框）
-  const prevImageData =
-    y > 0 ? ctx.getImageData(0, y - 4, canvas.width, 1).data : null;
-  const TABLE_BORDER_COLOR = "221,221,221";
+export function analyzePageBreakLine(
+  yCoordinate: number,
+  canvas: HTMLCanvasElement
+): PageBreakAnalysisResult {
+  const context = canvas.getContext("2d")!;
+  const currentLineImageData = context.getImageData(
+    0,
+    yCoordinate,
+    canvas.width,
+    1
+  ).data;
+  const previousLineImageData =
+    yCoordinate > 0
+      ? context.getImageData(
+          0,
+          yCoordinate - TABLE_BORDER_DETECTION_OFFSET,
+          canvas.width,
+          1
+        ).data
+      : null;
 
-  // 统计当前行各颜色出现次数
+  const colorDistribution = analyzeColorDistribution(currentLineImageData);
+  const lineCharacteristics = determineLineCharacteristics(
+    colorDistribution,
+    canvas.width
+  );
+
+  const isTableTopBorder =
+    lineCharacteristics.isTableLine && previousLineImageData
+      ? isLineCompletelyWhite(previousLineImageData)
+      : false;
+
+  return {
+    isCleanBreakPoint:
+      (lineCharacteristics.isPureWhite || lineCharacteristics.isTableLine) &&
+      !isTableTopBorder,
+    isTableBorder: lineCharacteristics.isTableLine,
+  };
+}
+
+/**
+ * 分析图像数据中的颜色分布
+ */
+function analyzeColorDistribution(
+  imageData: Uint8ClampedArray
+): Record<string, number> {
   const colorBuckets: Record<string, number> = {};
+
   for (let i = 0; i < imageData.length; i += 4) {
-    // 提取RGB值作为颜色键（格式：R,G,B）
-    const key = `${imageData[i]},${imageData[i + 1]},${imageData[i + 2]}`;
-    colorBuckets[key] = (colorBuckets[key] || 0) + 1;
+    const rgbKey = `${imageData[i]},${imageData[i + 1]},${imageData[i + 2]}`;
+    colorBuckets[rgbKey] = (colorBuckets[rgbKey] || 0) + 1;
   }
 
-  // 获取出现次数最多的主颜色及其占比
-  const [mainColor, count] = Object.entries(colorBuckets).sort(
+  return colorBuckets;
+}
+
+/**
+ * 确定线条特征
+ */
+function determineLineCharacteristics(
+  colorDistribution: Record<string, number>,
+  lineWidth: number
+) {
+  const [dominantColor, pixelCount] = Object.entries(colorDistribution).sort(
     (a, b) => b[1] - a[1]
   )[0];
-  const ratio = count / canvas.width;
-  // 判断是否为全白线（主颜色为纯白且占比100%）
-  const isPureWhite = mainColor === "255,255,255" && ratio === 1;
-  // 判断是否为表格线（主颜色为表格边框色且占比≥80%）
-  const isTableLine = mainColor === TABLE_BORDER_COLOR && ratio >= 0.8;
 
-  let isTableTopBorder = false;
-  // 若为表格线且存在上方图像数据，检查是否为表格顶部边框（上方4像素处需全白）
-  if (isTableLine && prevImageData) {
-    isTableTopBorder = [...Array(prevImageData.length / 4).keys()].every(
-      (i) => {
-        const idx = i * 4;
-        return (
-          prevImageData[idx] === 255 &&
-          prevImageData[idx + 1] === 255 &&
-          prevImageData[idx + 2] === 255
-        );
-      }
-    );
+  const dominantColorRatio = pixelCount / lineWidth;
+
+  return {
+    isPureWhite:
+      dominantColor === PURE_WHITE_RGB_COLOR && dominantColorRatio === 1,
+    isTableLine:
+      dominantColor === TABLE_BORDER_RGB_COLOR &&
+      dominantColorRatio >= TABLE_LINE_RATIO_THRESHOLD,
+  };
+}
+
+/**
+ * 检查图像数据是否完全为白色
+ */
+function isLineCompletelyWhite(imageData: Uint8ClampedArray): boolean {
+  for (let i = 0; i < imageData.length; i += 4) {
+    if (
+      imageData[i] !== 255 ||
+      imageData[i + 1] !== 255 ||
+      imageData[i + 2] !== 255
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * 向上搜索最优的分页切割点
+ *
+ * 从指定位置向上遍历，寻找第一个适合分页的干净切割线
+ *
+ * @param startYCoordinate - 搜索起始Y坐标
+ * @param canvas - 源 Canvas 元素
+ * @returns OptimalBreakPointResult - 最优切割点信息
+ */
+export function findOptimalPageBreak(
+  startYCoordinate: number,
+  canvas: HTMLCanvasElement
+): OptimalBreakPointResult {
+  for (let y = startYCoordinate; y > 0; y--) {
+    const analysisResult = analyzePageBreakLine(y, canvas);
+
+    if (analysisResult.isCleanBreakPoint) {
+      return {
+        cutY: y + 1,
+        isTableBorder: analysisResult.isTableBorder,
+      };
+    }
   }
 
   return {
-    isCleanCut: (isPureWhite || isTableLine) && !isTableTopBorder,
-    isTableBorder: isTableLine,
+    cutY: startYCoordinate,
+    isTableBorder: false,
   };
-};
+}
 
 /**
- * 向上查找最近的干净分页点
- */
-export const findCleanCut = (
-  startY: number,
-  canvas: HTMLCanvasElement
-): { cutY: number; isTableBorder: boolean } => {
-  // 从起始位置向上遍历每一行（y递减）
-  for (let y = startY; y > 0; y--) {
-    // 分析当前行是否为干净分页线
-    const result = analyzeCutLine(y, canvas);
-    // 找到第一个干净分页线时返回（y+1修正为实际切割位置）
-    if (result.isCleanCut) {
-      return { cutY: y + 1, isTableBorder: result.isTableBorder };
-    }
-  }
-  return { cutY: startY, isTableBorder: false };
-};
-
-/**
- * 判断给定 canvas 是否为“白色画布”，即绝大部分像素为接近纯白的颜色。
+ * 检测 Canvas 是否为视觉上的白色画布
  *
- * @param canvas - 要检测的 canvas 元素
- * @param whiteThreshold - 单个 RGB 通道的白色判断阈值（默认 250，即接近255的亮色）
- * @returns boolean - 是否为视觉上的“白页”
+ * 通过分析所有像素点，判断画布是否主要由接近白色的像素组成
+ *
+ * @param canvas - 要检测的 Canvas 元素
+ * @param whiteThreshold - 白色判断阈值，默认为 250
+ * @returns boolean - 是否为白色画布
  */
-export const isWhiteCanvas = (
+export function isCanvasVisuallyWhite(
   canvas: HTMLCanvasElement,
-  whiteThreshold = 250
-): boolean => {
-  // 获取 Canvas 2D 渲染上下文
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return false; // 获取失败时，默认非白页
+  whiteThreshold: number = DEFAULT_WHITE_PIXEL_THRESHOLD
+): boolean {
+  const context = canvas.getContext("2d");
+  if (!context) return false;
 
   const { width, height } = canvas;
-  // 获取画布所有像素的图像数据
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const pixels = imageData.data; // 像素数据，4个一组(R,G,B,A)
+  const imageData = context.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
 
-  // 遍历每个像素（步长4，跳过 alpha 通道）
   for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i];
-    const g = pixels[i + 1];
-    const b = pixels[i + 2];
+    const [red, green, blue] = [pixels[i], pixels[i + 1], pixels[i + 2]];
 
-    // 若当前像素任一通道小于白色阈值，说明非白色
-    if (r < whiteThreshold || g < whiteThreshold || b < whiteThreshold) {
-      return false; // 一旦遇到非白色像素，立即判定非白页，提前返回
+    if (
+      red < whiteThreshold ||
+      green < whiteThreshold ||
+      blue < whiteThreshold
+    ) {
+      return false;
     }
   }
 
-  // 全部像素均满足白色阈值，判定为白页，返回 true
   return true;
-};
+}
 
 /**
- * 检查最后一页是否是“空白白页”
- * 仅当最后一页内容高度小于指定阈值时，才进行颜色检测
+ * 检测并判断最后一页是否为空白页
  *
- * @param pageCoords - 所有分页的坐标信息数组
- * @param contentCanvas - 原始内容 canvas
- * @param heightThresholdPx - 最后页高度像素阈值，默认 30px
- * @param whiteThreshold - 判断白色像素的 RGB 通道下限（默认 250）
+ * 仅当最后一页内容高度小于指定阈值时，才进行详细的颜色检测
+ *
+ * @param pageBreakCoordinates - 所有分页坐标信息
+ * @param contentCanvas - 原始内容 Canvas
+ * @param heightThreshold - 高度阈值，默认 200px
+ * @param whiteThreshold - 白色像素判断阈值，默认 250
+ * @returns boolean - 最后一页是否为空白页
  */
-export const isBlankLastPage = (
-  pageCoords: { startY: number; endY: number; isTableBorder: boolean }[],
+export function detectBlankLastPage(
+  pageBreakCoordinates: Array<{
+    startY: number;
+    endY: number;
+    isTableBorderBreak: boolean;
+  }>,
   contentCanvas: HTMLCanvasElement,
-  heightThresholdPx = 200,
-  whiteThreshold = 250
-) => {
-  // 没有分页或只有一页，不需要处理
-  if (pageCoords.length === 0) return false;
+  heightThreshold: number = DEFAULT_BLANK_PAGE_HEIGHT_THRESHOLD,
+  whiteThreshold: number = DEFAULT_WHITE_PIXEL_THRESHOLD
+): boolean {
+  if (pageBreakCoordinates.length === 0) {
+    return false;
+  }
 
-  // 获取最后一页的坐标信息
-  const lastPage = pageCoords[pageCoords.length - 1];
-  const lastPageHeight = lastPage.endY - lastPage.startY;
+  const lastPageCoordinates =
+    pageBreakCoordinates[pageBreakCoordinates.length - 1];
+  const lastPageHeight = lastPageCoordinates.endY - lastPageCoordinates.startY;
 
-  // 若最后一页内容高度大于阈值，则不判定为白页，直接跳过
-  if (lastPageHeight > heightThresholdPx) return false;
+  if (lastPageHeight > heightThreshold) {
+    return false;
+  }
 
-  // 创建临时 canvas，提取最后一页内容区域
-  const sliceCanvas = document.createElement("canvas");
-  sliceCanvas.width = contentCanvas.width;
-  sliceCanvas.height = lastPageHeight;
-
-  const ctx = sliceCanvas.getContext("2d")!;
-  ctx.drawImage(
+  const lastPageCanvas = extractPageContentCanvas(
     contentCanvas,
-    0,
-    lastPage.startY,
-    sliceCanvas.width,
-    sliceCanvas.height,
-    0,
-    0,
-    sliceCanvas.width,
-    sliceCanvas.height
+    lastPageCoordinates.startY,
+    lastPageCoordinates.endY
   );
 
-  // 检测该区域是否为白色画布
-  return isWhiteCanvas(sliceCanvas, whiteThreshold);
-};
+  return isCanvasVisuallyWhite(lastPageCanvas, whiteThreshold);
+}
+
+/**
+ * 提取页面内容区域为独立的 Canvas
+ *
+ * @param sourceCanvas - 源 Canvas
+ * @param startY - 起始Y坐标
+ * @param endY - 结束Y坐标
+ * @returns HTMLCanvasElement - 提取的页面内容 Canvas
+ */
+function extractPageContentCanvas(
+  sourceCanvas: HTMLCanvasElement,
+  startY: number,
+  endY: number
+): HTMLCanvasElement {
+  const extractedCanvas = document.createElement("canvas");
+  extractedCanvas.width = sourceCanvas.width;
+  extractedCanvas.height = endY - startY;
+
+  const context = extractedCanvas.getContext("2d")!;
+  context.drawImage(
+    sourceCanvas,
+    0,
+    startY,
+    extractedCanvas.width,
+    extractedCanvas.height,
+    0,
+    0,
+    extractedCanvas.width,
+    extractedCanvas.height
+  );
+
+  return extractedCanvas;
+}
