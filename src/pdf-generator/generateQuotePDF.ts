@@ -1,11 +1,11 @@
 import {
-  captureElementAsCanvas,
   findOptimalPageBreak,
   calculateScaledDimensions,
   detectBlankLastPage,
 } from "./pdfUtils";
-import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { renderElementsInIframe } from "./iframe-renderer";
+import { renderElementNonBlocking } from "./non-blocking-renderer";
 
 /**
  * PDF 生成配置选项
@@ -65,7 +65,6 @@ export async function generateIntelligentPdf({
   onFooterUpdate,
 }: PdfGenerationOptions): Promise<jsPDF> {
   // 第一阶段：将页面元素转换为 Canvas
-
   // 第一阶段耗时
   const renderStartTime = performance.now();
   const canvasElements = await renderElementsToCanvas({
@@ -111,7 +110,7 @@ export async function generateIntelligentPdf({
 }
 
 /**
- * 将页面元素渲染为 Canvas 对象
+ * 将页面元素渲染为 Canvas 对象（使用 iframe 隔离渲染）
  */
 async function renderElementsToCanvas({
   headerElement,
@@ -121,13 +120,11 @@ async function renderElementsToCanvas({
   PdfGenerationOptions,
   "headerElement" | "contentElement" | "footerElement"
 >) {
-  const [header, content, footer] = await Promise.all([
-    captureElementAsCanvas(headerElement),
-    captureElementAsCanvas(contentElement),
-    captureElementAsCanvas(footerElement),
-  ]);
-
-  return { header, content, footer };
+  return await renderElementsInIframe({
+    headerElement,
+    contentElement,
+    footerElement,
+  });
 }
 
 /**
@@ -450,7 +447,9 @@ async function renderPageFooter({
     await Promise.resolve(onFooterUpdate(pageIndex, totalPages));
   }
 
-  const updatedFooterCanvas = await html2canvas(footerElement, {
+  // 使用通用的非阻塞渲染函数
+  const updatedFooterCanvas = await renderElementNonBlocking(footerElement, {
+    useIframe: true, // 页脚通常比较简单，使用简单的非阻塞渲染即可
     scale: window.devicePixelRatio * 2,
   });
 
