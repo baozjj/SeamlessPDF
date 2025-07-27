@@ -147,13 +147,16 @@ function calculateIntelligentPageBreaks(
   let currentOffsetY = 0;
 
   while (currentOffsetY < contentCanvas.height) {
+    // 上一页是否为表格边框分割点
     const shouldAdjustForTableBorder =
       shouldAdjustOffsetForPreviousTableBorder(pageBreakCoordinates);
 
+    // 如果上一页为表格边框分割点，则调整当前页的起始Y坐标
     if (shouldAdjustForTableBorder) {
       currentOffsetY -= TABLE_BREAK_ADJUSTMENT_OFFSET;
     }
 
+    // 计算当前页的结束Y坐标
     const roughEndY = Math.min(
       currentOffsetY + contentPageHeightInPixels,
       contentCanvas.height

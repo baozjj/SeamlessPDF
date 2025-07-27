@@ -58,7 +58,7 @@ const DEFAULT_BLANK_PAGE_HEIGHT_THRESHOLD = 200;
 /**
  * 表格边框检测的向上偏移量（像素）
  */
-const TABLE_BORDER_DETECTION_OFFSET = 4;
+const TABLE_BORDER_HEIGHT = 4;
 
 /**
  * 将 DOM 元素渲染为 Canvas
@@ -104,43 +104,49 @@ export function calculateScaledDimensions(
  * @param canvas - 源 Canvas 元素
  * @returns PageBreakAnalysisResult - 分析结果
  */
-export function analyzePageBreakLine(
+function analyzePageBreakLine(
   yCoordinate: number,
   canvas: HTMLCanvasElement
 ): PageBreakAnalysisResult {
   const context = canvas.getContext("2d")!;
+
+  // 检测完整的表格边框区域
+  const tableBorderRegion = detectTableBorderRegion(yCoordinate, canvas);
+
+  if (tableBorderRegion.isWithinBorder) {
+    return {
+      isCleanBreakPoint: false,
+      isTableBorder: true,
+    };
+  }
+
+  // 检查当前行的特征
   const currentLineImageData = context.getImageData(
     0,
     yCoordinate,
     canvas.width,
     1
   ).data;
-  const previousLineImageData =
-    yCoordinate > 0
-      ? context.getImageData(
-          0,
-          yCoordinate - TABLE_BORDER_DETECTION_OFFSET,
-          canvas.width,
-          1
-        ).data
-      : null;
-
   const colorDistribution = analyzeColorDistribution(currentLineImageData);
   const lineCharacteristics = determineLineCharacteristics(
     colorDistribution,
     canvas.width
   );
 
-  const isTableTopBorder =
-    lineCharacteristics.isTableLine && previousLineImageData
-      ? isLineCompletelyWhite(previousLineImageData)
-      : false;
+  // 如果是表格边框，确保在边框底部分割
+  if (lineCharacteristics.isTableLine) {
+    const borderBottomY = findTableBorderBottom(yCoordinate, canvas);
+    const isAtBorderBottom = yCoordinate === borderBottomY;
+
+    return {
+      isCleanBreakPoint: isAtBorderBottom,
+      isTableBorder: true,
+    };
+  }
 
   return {
-    isCleanBreakPoint:
-      (lineCharacteristics.isPureWhite || lineCharacteristics.isTableLine) &&
-      !isTableTopBorder,
-    isTableBorder: lineCharacteristics.isTableLine,
+    isCleanBreakPoint: lineCharacteristics.isPureWhite,
+    isTableBorder: false,
   };
 }
 
@@ -172,7 +178,6 @@ function determineLineCharacteristics(
   )[0];
 
   const dominantColorRatio = pixelCount / lineWidth;
-
   return {
     isPureWhite:
       dominantColor === PURE_WHITE_RGB_COLOR && dominantColorRatio === 1,
@@ -211,20 +216,55 @@ export function findOptimalPageBreak(
   startYCoordinate: number,
   canvas: HTMLCanvasElement
 ): OptimalBreakPointResult {
+  // 先向上搜索最优分割点
   for (let y = startYCoordinate; y > 0; y--) {
     const analysisResult = analyzePageBreakLine(y, canvas);
 
     if (analysisResult.isCleanBreakPoint) {
+      // 如果是表格边框，确保分割点在边框完整底部
+      if (analysisResult.isTableBorder) {
+        const borderBottom = findTableBorderBottom(y, canvas);
+        return {
+          cutY: borderBottom + 1,
+          isTableBorder: true,
+        };
+      }
+
       return {
         cutY: y + 1,
-        isTableBorder: analysisResult.isTableBorder,
+        isTableBorder: false,
       };
     }
   }
 
+  // 如果向上未找到，向下搜索
+  for (let y = startYCoordinate + 1; y < canvas.height; y++) {
+    const analysisResult = analyzePageBreakLine(y, canvas);
+
+    if (analysisResult.isCleanBreakPoint) {
+      if (analysisResult.isTableBorder) {
+        const borderBottom = findTableBorderBottom(y, canvas);
+        return {
+          cutY: borderBottom + 1,
+          isTableBorder: true,
+        };
+      }
+
+      return {
+        cutY: y + 1,
+        isTableBorder: false,
+      };
+    }
+  }
+
+  // 找不到干净分割点时，确保跳过整个表格边框区域
+  const safeCutY = Math.min(
+    startYCoordinate + TABLE_BORDER_HEIGHT * 2,
+    canvas.height
+  );
   return {
-    cutY: startYCoordinate,
-    isTableBorder: false,
+    cutY: safeCutY,
+    isTableBorder: true,
   };
 }
 
@@ -336,4 +376,84 @@ function extractPageContentCanvas(
   );
 
   return extractedCanvas;
+}
+
+/**
+ * 检测表格边框区域
+ */
+function detectTableBorderRegion(
+  yCoordinate: number,
+  canvas: HTMLCanvasElement
+): { isWithinBorder: boolean; borderTop: number; borderBottom: number } {
+  const context = canvas.getContext("2d")!;
+
+  // 向上查找边框起始位置
+  let borderTop = yCoordinate;
+  for (
+    let y = yCoordinate;
+    y >= Math.max(0, yCoordinate - TABLE_BORDER_HEIGHT * 2);
+    y--
+  ) {
+    const lineData = context.getImageData(0, y, canvas.width, 1).data;
+    const colorDist = analyzeColorDistribution(lineData);
+    const lineChars = determineLineCharacteristics(colorDist, canvas.width);
+
+    if (lineChars.isTableLine) {
+      borderTop = y;
+    } else {
+      break;
+    }
+  }
+
+  // 向下查找边框结束位置
+  let borderBottom = yCoordinate;
+  for (
+    let y = yCoordinate;
+    y <= Math.min(canvas.height - 1, yCoordinate + TABLE_BORDER_HEIGHT * 2);
+    y++
+  ) {
+    const lineData = context.getImageData(0, y, canvas.width, 1).data;
+    const colorDist = analyzeColorDistribution(lineData);
+    const lineChars = determineLineCharacteristics(colorDist, canvas.width);
+
+    if (lineChars.isTableLine) {
+      borderBottom = y;
+    } else {
+      break;
+    }
+  }
+
+  const isWithinBorder =
+    borderTop < borderBottom &&
+    yCoordinate >= borderTop &&
+    yCoordinate <= borderBottom &&
+    yCoordinate !== borderBottom; // 只允许在边框底部分割
+
+  return { isWithinBorder, borderTop, borderBottom };
+}
+
+/**
+ * 查找表格边框的底部位置
+ */
+function findTableBorderBottom(
+  startY: number,
+  canvas: HTMLCanvasElement
+): number {
+  const context = canvas.getContext("2d")!;
+
+  for (
+    let y = startY;
+    y <= Math.min(canvas.height - 1, startY + TABLE_BORDER_HEIGHT * 2);
+    y++
+  ) {
+    const lineData = context.getImageData(0, y, canvas.width, 1).data;
+    const colorDist = analyzeColorDistribution(lineData);
+    const lineChars = determineLineCharacteristics(colorDist, canvas.width);
+
+    if (!lineChars.isTableLine) {
+      return y - 1; // 返回最后一个边框行
+    }
+  }
+
+  return startY; // 如果没找到边框结束，返回起始位置
 }

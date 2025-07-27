@@ -64,7 +64,7 @@ const handleExport = async () => {
       },
     });
 
-    await pdf.save(`智能报告.pdf`, {
+    await pdf.save(`报告.pdf`, {
       returnPromise: true,
     });
   } catch (error) {
