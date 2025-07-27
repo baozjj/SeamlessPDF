@@ -120,6 +120,7 @@ async function renderElementsToCanvas({
   PdfGenerationOptions,
   "headerElement" | "contentElement" | "footerElement"
 >) {
+  // 直接使用 iframe 渲染，宽度约束将在后续的 renderElementNonBlocking 中处理
   return await renderElementsInIframe({
     headerElement,
     contentElement,
@@ -447,9 +448,9 @@ async function renderPageFooter({
     await Promise.resolve(onFooterUpdate(pageIndex, totalPages));
   }
 
-  // 使用通用的非阻塞渲染函数
+  // 使用通用的非阻塞渲染函数，确保页脚宽度不超出PDF边界
   const updatedFooterCanvas = await renderElementNonBlocking(footerElement, {
-    useIframe: true, // 页脚通常比较简单，使用简单的非阻塞渲染即可
+    useIframe: false, // 页脚使用简单的非阻塞渲染，避免iframe中的布局问题
     scale: window.devicePixelRatio * 2,
   });
 

@@ -4,7 +4,6 @@
  */
 
 import html2canvas from "html2canvas";
-import { renderElementsInIframe } from "./iframe-renderer";
 
 /**
  * 通用的非阻塞 HTML 元素渲染函数
@@ -15,16 +14,33 @@ export async function renderElementNonBlocking(
   options: {
     useIframe?: boolean;
     scale?: number;
+    maxWidth?: number;
   } = {}
 ): Promise<HTMLCanvasElement> {
-  const { useIframe = false, scale = window.devicePixelRatio * 2 } = options;
+  const {
+    useIframe = false,
+    scale = window.devicePixelRatio * 2,
+    maxWidth,
+  } = options;
 
-  if (useIframe) {
-    // 使用 iframe 多进程渲染（适用于复杂元素）
-    return await renderSingleElementInIframe(element);
-  } else {
-    // 使用简单的非阻塞渲染（适用于简单元素如页脚）
-    return await renderElementWithYield(element, scale);
+  // 如果指定了最大宽度，先应用宽度约束
+  const originalStyles = maxWidth
+    ? applyWidthConstraints(element, maxWidth)
+    : null;
+
+  try {
+    if (useIframe) {
+      // 使用 iframe 多进程渲染（适用于复杂元素）
+      return await renderSingleElementInIframe(element);
+    } else {
+      // 使用简单的非阻塞渲染（适用于简单元素如页脚）
+      return await renderElementWithYield(element, scale);
+    }
+  } finally {
+    // 恢复原始样式
+    if (originalStyles) {
+      restoreOriginalStyles(element, originalStyles);
+    }
   }
 }
 
@@ -65,13 +81,61 @@ async function renderElementWithYield(
 async function renderSingleElementInIframe(
   element: HTMLElement
 ): Promise<HTMLCanvasElement> {
-  // 复用现有的多元素渲染，但只传入一个元素
-  const result = await renderElementsInIframe({
-    headerElement: element,
-    contentElement: element,
-    footerElement: element,
-  });
+  // 对于单个元素的 iframe 渲染，直接使用简单的非阻塞渲染
+  // 因为 iframe 渲染主要是为了处理多个复杂元素的并行渲染
+  // 单个元素使用简单渲染更可靠
+  return await renderElementWithYield(element, window.devicePixelRatio * 2);
+}
 
-  // 返回其中一个结果（它们都是同一个元素）
-  return result.header;
+/**
+ * 应用宽度约束到元素
+ */
+function applyWidthConstraints(
+  element: HTMLElement,
+  maxWidth: number
+): {
+  width: string;
+  maxWidth: string;
+  boxSizing: string;
+  overflow: string;
+  overflowWrap: string;
+} {
+  const originalStyles = {
+    width: element.style.width,
+    maxWidth: element.style.maxWidth,
+    boxSizing: element.style.boxSizing,
+    overflow: element.style.overflow,
+    overflowWrap: element.style.overflowWrap,
+  };
+
+  element.style.width = `${maxWidth}px`;
+  element.style.maxWidth = `${maxWidth}px`;
+  element.style.boxSizing = "border-box";
+  element.style.overflow = "hidden";
+  element.style.overflowWrap = "break-word";
+
+  // 强制重新布局
+  element.offsetHeight;
+
+  return originalStyles;
+}
+
+/**
+ * 恢复元素的原始样式
+ */
+function restoreOriginalStyles(
+  element: HTMLElement,
+  originalStyles: {
+    width: string;
+    maxWidth: string;
+    boxSizing: string;
+    overflow: string;
+    overflowWrap: string;
+  }
+): void {
+  element.style.width = originalStyles.width;
+  element.style.maxWidth = originalStyles.maxWidth;
+  element.style.boxSizing = originalStyles.boxSizing;
+  element.style.overflow = originalStyles.overflow;
+  element.style.overflowWrap = originalStyles.overflowWrap;
 }
