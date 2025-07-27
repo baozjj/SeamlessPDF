@@ -4,8 +4,7 @@ import {
   detectBlankLastPage,
 } from "./pdfUtils";
 import jsPDF from "jspdf";
-import { renderElementsInIframe } from "./iframe-renderer";
-import { renderElementNonBlocking } from "./non-blocking-renderer";
+import { renderElementInIframe } from "./iframe-renderer";
 
 /**
  * PDF 生成配置选项
@@ -116,16 +115,22 @@ async function renderElementsToCanvas({
   headerElement,
   contentElement,
   footerElement,
-}: Pick<
-  PdfGenerationOptions,
-  "headerElement" | "contentElement" | "footerElement"
->) {
-  // 直接使用 iframe 渲染，宽度约束将在后续的 renderElementNonBlocking 中处理
-  return await renderElementsInIframe({
-    headerElement,
-    contentElement,
-    footerElement,
-  });
+}: {
+  headerElement: HTMLElement;
+  contentElement: HTMLElement;
+  footerElement: HTMLElement;
+}): Promise<{
+  header: HTMLCanvasElement;
+  content: HTMLCanvasElement;
+  footer: HTMLCanvasElement;
+}> {
+  const [header, content, footer] = await Promise.all([
+    renderElementInIframe(headerElement, "header"),
+    renderElementInIframe(contentElement, "content"),
+    renderElementInIframe(footerElement, "footer"),
+  ]);
+
+  return { header, content, footer };
 }
 
 /**
@@ -251,8 +256,23 @@ async function generatePdfDocument({
   const pdf = new jsPDF("portrait", "pt", "a4");
   const totalPages = pageBreakCoordinates.length;
 
+  // 预渲染所有页脚（并行处理）
+  console.log("开始预渲染所有页脚...");
+  const footerPreRenderStartTime = performance.now();
+  const preRenderedFooters = await preRenderAllFooters({
+    footerElement,
+    totalPages,
+    onFooterUpdate,
+  });
+  const footerPreRenderEndTime = performance.now();
+  const footerPreRenderTime = footerPreRenderEndTime - footerPreRenderStartTime;
+  console.log(`页脚预渲染耗时: ${footerPreRenderTime.toFixed(2)}ms`);
+
+  // 渲染所有页面（页脚已预渲染）
+  console.log("开始渲染所有页面...");
+  const pageRenderStartTime = performance.now();
+
   for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-    // 计算耗时
     console.log(`第${pageIndex + 1}页开始渲染`);
     const pageStartTime = performance.now();
 
@@ -263,20 +283,133 @@ async function generatePdfDocument({
     await renderSinglePage({
       pdf,
       pageIndex,
-      totalPages,
       canvasElements,
       layoutMetrics,
       pageBreakCoordinates,
-      footerElement,
-      onFooterUpdate,
+      preRenderedFooter: preRenderedFooters[pageIndex],
     });
-    // 计算耗时
+
     const pageEndTime = performance.now();
     const pageTime = pageEndTime - pageStartTime;
     console.log(`第${pageIndex + 1}页耗时: ${pageTime.toFixed(2)}ms`);
   }
 
+  const pageRenderEndTime = performance.now();
+  const pageRenderTime = pageRenderEndTime - pageRenderStartTime;
+  console.log(`所有页面渲染耗时: ${pageRenderTime.toFixed(2)}ms`);
+
   return pdf;
+}
+
+/**
+ * 预渲染所有页脚
+ */
+async function preRenderAllFooters({
+  footerElement,
+  totalPages,
+  onFooterUpdate,
+}: {
+  footerElement: HTMLElement;
+  totalPages: number;
+  onFooterUpdate: PdfGenerationOptions["onFooterUpdate"];
+}): Promise<HTMLCanvasElement[]> {
+  const preRenderedFooters = [];
+
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+    const pageNumber = pageIndex + 1;
+
+    // 更新页脚内容
+    if (onFooterUpdate) {
+      await Promise.resolve(onFooterUpdate(pageNumber, totalPages));
+    }
+
+    // 创建页脚克隆并复制计算样式
+    const cloneElement = createStyledClone(footerElement);
+
+    // 渲染当前页脚
+    const footerCanvas = renderElementInIframe(
+      cloneElement,
+      `footer-page-${pageNumber}`
+    );
+    preRenderedFooters.push(footerCanvas);
+  }
+
+  const res = await Promise.all(preRenderedFooters);
+
+  return res;
+}
+
+/**
+ * 创建带有完整样式的元素克隆
+ */
+function createStyledClone(element: HTMLElement): HTMLElement {
+  // 克隆元素结构
+  const clone = element.cloneNode(true) as HTMLElement;
+
+  // 复制根元素的计算样式
+  copyComputedStyles(element, clone);
+
+  // 递归复制所有子元素的计算样式
+  const originalElements = element.querySelectorAll("*");
+  const clonedElements = clone.querySelectorAll("*");
+
+  for (let i = 0; i < originalElements.length; i++) {
+    const originalEl = originalElements[i] as HTMLElement;
+    const clonedEl = clonedElements[i] as HTMLElement;
+    copyComputedStyles(originalEl, clonedEl);
+  }
+
+  return clone;
+}
+
+/**
+ * 复制元素的计算样式
+ */
+function copyComputedStyles(source: HTMLElement, target: HTMLElement): void {
+  const computedStyles = window.getComputedStyle(source);
+
+  // 复制所有计算样式到内联样式
+  for (let i = 0; i < computedStyles.length; i++) {
+    const property = computedStyles[i];
+    const value = computedStyles.getPropertyValue(property);
+
+    // 跳过一些不需要或可能有问题的属性
+    if (shouldSkipProperty(property)) {
+      continue;
+    }
+
+    try {
+      target.style.setProperty(property, value);
+    } catch (e) {
+      // 忽略无法设置的属性
+      console.warn(`无法设置样式属性 ${property}: ${value}`, e);
+    }
+  }
+}
+
+/**
+ * 判断是否应该跳过某个CSS属性
+ */
+function shouldSkipProperty(property: string): boolean {
+  // 跳过这些可能有问题的属性
+  const skipProperties = [
+    "length",
+    "parentRule",
+    "cssText",
+    "cssFloat",
+    "getPropertyPriority",
+    "getPropertyValue",
+    "item",
+    "removeProperty",
+    "setProperty",
+  ];
+
+  return (
+    skipProperties.includes(property) ||
+    property.startsWith("-webkit-") ||
+    property.startsWith("-moz-") ||
+    property.startsWith("-ms-")
+  );
 }
 
 /**
@@ -285,16 +418,13 @@ async function generatePdfDocument({
 async function renderSinglePage({
   pdf,
   pageIndex,
-  totalPages,
   canvasElements,
   layoutMetrics,
   pageBreakCoordinates,
-  footerElement,
-  onFooterUpdate,
+  preRenderedFooter,
 }: {
   pdf: jsPDF;
   pageIndex: number;
-  totalPages: number;
   canvasElements: {
     header: HTMLCanvasElement;
     content: HTMLCanvasElement;
@@ -302,8 +432,7 @@ async function renderSinglePage({
   };
   layoutMetrics: ReturnType<typeof calculatePageLayoutMetrics>;
   pageBreakCoordinates: PageBreakCoordinate[];
-  footerElement: HTMLElement;
-  onFooterUpdate: PdfGenerationOptions["onFooterUpdate"];
+  preRenderedFooter: HTMLCanvasElement;
 }): Promise<void> {
   // 渲染页眉
   renderPageHeader(pdf, canvasElements.header, layoutMetrics.headerHeight);
@@ -317,15 +446,15 @@ async function renderSinglePage({
     pageBreakCoordinates,
   });
 
-  // 渲染页脚
-  await renderPageFooter({
-    pdf,
-    pageIndex: pageIndex + 1,
-    totalPages,
-    footerElement,
-    layoutMetrics,
-    onFooterUpdate,
-  });
+  // 渲染页脚（使用预渲染的页脚）
+  pdf.addImage(
+    preRenderedFooter,
+    "JPEG",
+    0,
+    A4_PAGE_DIMENSIONS.HEIGHT - layoutMetrics.footerHeight,
+    A4_PAGE_DIMENSIONS.WIDTH,
+    layoutMetrics.footerHeight
+  );
 }
 
 /**
@@ -423,43 +552,5 @@ function calculateScaledContentHeight(
 ): number {
   return (
     (actualContentHeight / contentPageHeightInPixels) * contentRegionHeight
-  );
-}
-
-/**
- * 渲染页脚
- */
-async function renderPageFooter({
-  pdf,
-  pageIndex,
-  totalPages,
-  footerElement,
-  layoutMetrics,
-  onFooterUpdate,
-}: {
-  pdf: jsPDF;
-  pageIndex: number;
-  totalPages: number;
-  footerElement: HTMLElement;
-  layoutMetrics: ReturnType<typeof calculatePageLayoutMetrics>;
-  onFooterUpdate: PdfGenerationOptions["onFooterUpdate"];
-}): Promise<void> {
-  if (onFooterUpdate) {
-    await Promise.resolve(onFooterUpdate(pageIndex, totalPages));
-  }
-
-  // 使用通用的非阻塞渲染函数，确保页脚宽度不超出PDF边界
-  const updatedFooterCanvas = await renderElementNonBlocking(footerElement, {
-    useIframe: false, // 页脚使用简单的非阻塞渲染，避免iframe中的布局问题
-    scale: window.devicePixelRatio * 2,
-  });
-
-  pdf.addImage(
-    updatedFooterCanvas,
-    "JPEG",
-    0,
-    A4_PAGE_DIMENSIONS.HEIGHT - layoutMetrics.footerHeight,
-    A4_PAGE_DIMENSIONS.WIDTH,
-    layoutMetrics.footerHeight
   );
 }

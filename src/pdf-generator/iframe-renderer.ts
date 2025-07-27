@@ -6,22 +6,13 @@
 import { serializeElement, extractPageStyles } from "./element-serializer";
 
 /**
- * 在 iframe 中渲染元素为 Canvas
+ * 在 iframe 中渲染单个元素为 Canvas
  * 这样可以避免阻塞主线程，提高用户界面响应性
  */
-export async function renderElementsInIframe({
-  headerElement,
-  contentElement,
-  footerElement,
-}: {
-  headerElement: HTMLElement;
-  contentElement: HTMLElement;
-  footerElement: HTMLElement;
-}): Promise<{
-  header: HTMLCanvasElement;
-  content: HTMLCanvasElement;
-  footer: HTMLCanvasElement;
-}> {
+export async function renderElementInIframe(
+  element: HTMLElement,
+  elementKey?: string
+): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     // 创建隐藏的 iframe
     const iframe = document.createElement("iframe");
@@ -51,15 +42,15 @@ export async function renderElementsInIframe({
         const renderResults = await renderInCrossOriginIframe(
           iframe.contentWindow!,
           {
-            headerElement: serializeElement(headerElement),
-            contentElement: serializeElement(contentElement),
-            footerElement: serializeElement(footerElement),
+            element: serializeElement(element),
+            elementKey: elementKey || "element",
             styles: await extractPageStyles(),
           }
         );
 
         cleanup();
-        resolve(renderResults);
+        // 返回单个 canvas 而不是对象
+        resolve(renderResults[elementKey || "element"]);
       } catch (error) {
         cleanup();
         reject(error);
@@ -78,7 +69,7 @@ export async function renderElementsInIframe({
 }
 
 /**
- * 创建跨域渲染页面
+ * 创建单个元素的跨域渲染页面
  */
 function createCrossOriginRenderPage(): string {
   const renderPageHTML = `
@@ -100,14 +91,14 @@ function createCrossOriginRenderPage(): string {
             try {
                 const { type, data, messageId: msgId } = event.data || {};
                 messageId = msgId;
-                
-                if (type === 'RENDER_ELEMENTS') {
-                    const results = await renderElements(data);
-                    
+
+                if (type === 'RENDER_ELEMENT') {
+                    const result = await renderSingleElement(data);
+
                     event.source.postMessage({
                         type: 'RENDER_COMPLETE',
                         messageId: messageId,
-                        data: results
+                        data: result
                     }, '*');
                 }
             } catch (error) {
@@ -118,79 +109,63 @@ function createCrossOriginRenderPage(): string {
                 }, '*');
             }
         });
-        
-        async function renderElements(data) {
-            const { headerElement, contentElement, footerElement, styles } = data;
-            
+
+        async function renderSingleElement(data) {
+            const { element: elementData, elementKey, styles } = data;
+
             // 注入样式
             const styleElement = document.createElement('style');
             styleElement.textContent = styles;
             document.head.appendChild(styleElement);
-            
+
             // 创建渲染容器
             const container = document.createElement('div');
             container.className = 'render-container';
             document.body.appendChild(container);
-            
-            const results = {};
-            const elementMap = {
-                headerElement: 'header',
-                contentElement: 'content', 
-                footerElement: 'footer'
-            };
-            
-            for (const [originalKey, elementData] of Object.entries({ headerElement, contentElement, footerElement })) {
-                const key = elementMap[originalKey];
-                
-                const element = recreateElement(elementData);
-                container.appendChild(element);
-                
-                if (element.offsetWidth === 0 || element.offsetHeight === 0) {
-                    element.style.width = elementData.offsetWidth + 'px';
-                    element.style.height = elementData.offsetHeight + 'px';
-                }
-                
-                const renderWidth = elementData.offsetWidth;
-                const renderHeight = elementData.offsetHeight;
-                
-                const canvas = await html2canvas(element, {
-                    scale: window.devicePixelRatio * 2,
-                    useCORS: true,
-                    allowTaint: true,
-                    logging: false,
-                    width: renderWidth,
-                    height: renderHeight,
-                    windowWidth: renderWidth,
-                    windowHeight: renderHeight
-                });
-                
-                results[key] = {
+
+            const element = recreateElement(elementData);
+            container.appendChild(element);
+
+            // 等待元素渲染完成
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // 使用 html2canvas 渲染元素，让它自动检测尺寸
+            const canvas = await html2canvas(element, {
+                scale: window.devicePixelRatio * 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false
+            });
+
+            const result = {
+                [elementKey]: {
                     dataURL: canvas.toDataURL('image/png'),
                     width: canvas.width,
                     height: canvas.height
-                };
-                
-                container.removeChild(element);
-            }
-            
+                }
+            };
+
             document.body.removeChild(container);
-            return results;
+            return result;
         }
         
         function recreateElement(elementData) {
             const element = document.createElement(elementData.tagName);
             element.innerHTML = elementData.innerHTML;
-            
+
+            // 1. 首先应用所有原始样式
             if (elementData.styles) {
                 Object.assign(element.style, elementData.styles);
             }
-            
+
+            // 2. 应用所有原始属性
             if (elementData.attributes) {
                 for (const [name, value] of Object.entries(elementData.attributes)) {
                     element.setAttribute(name, value);
                 }
             }
-            
+
+            // 3. 应用子元素样式
             if (elementData.childrenStyles) {
                 const childElements = element.querySelectorAll('*');
                 childElements.forEach((child, index) => {
@@ -202,26 +177,12 @@ function createCrossOriginRenderPage(): string {
                     }
                 });
             }
-            
-            element.style.display = element.style.display || 'block';
-            element.style.position = 'relative';
+
+            // 4. 只做最小必要的调整，确保元素可见和正确定位
             element.style.visibility = 'visible';
             element.style.opacity = '1';
-            
-            if (elementData.offsetWidth && elementData.offsetHeight) {
-                element.style.width = elementData.offsetWidth + 'px';
-                element.style.height = elementData.offsetHeight + 'px';
-                element.style.minWidth = elementData.offsetWidth + 'px';
-                element.style.minHeight = elementData.offsetHeight + 'px';
-                element.style.maxWidth = elementData.offsetWidth + 'px';
-                element.style.maxHeight = elementData.offsetHeight + 'px';
-            }
-            
-            element.style.boxSizing = element.style.boxSizing || 'border-box';
-            element.style.overflow = element.style.overflow || 'hidden';
-            element.style.wordWrap = element.style.wordWrap || 'break-word';
-            element.style.wordBreak = element.style.wordBreak || 'break-word';
-            
+            element.style.position = 'relative';
+
             return element;
         }
         
@@ -239,11 +200,7 @@ function createCrossOriginRenderPage(): string {
 async function renderInCrossOriginIframe(
   iframeWindow: Window,
   data: any
-): Promise<{
-  header: HTMLCanvasElement;
-  content: HTMLCanvasElement;
-  footer: HTMLCanvasElement;
-}> {
+): Promise<Record<string, HTMLCanvasElement>> {
   return new Promise((resolve, reject) => {
     const messageId = Math.random().toString(36).substring(2, 11);
     let isResolved = false;
@@ -290,7 +247,7 @@ async function renderInCrossOriginIframe(
 
     iframeWindow.postMessage(
       {
-        type: "RENDER_ELEMENTS",
+        type: "RENDER_ELEMENT",
         messageId: messageId,
         data: data,
       },
@@ -302,11 +259,9 @@ async function renderInCrossOriginIframe(
 /**
  * 将 base64 数据转换为 Canvas 对象
  */
-async function convertDataURLsToCanvases(data: any): Promise<{
-  header: HTMLCanvasElement;
-  content: HTMLCanvasElement;
-  footer: HTMLCanvasElement;
-}> {
+async function convertDataURLsToCanvases(
+  data: any
+): Promise<Record<string, HTMLCanvasElement>> {
   const result: any = {};
 
   for (const [key, value] of Object.entries(data)) {
