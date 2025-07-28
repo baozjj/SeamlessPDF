@@ -69,23 +69,121 @@ export async function renderElementInIframe(
 }
 
 /**
- * 创建单个元素的跨域渲染页面
+ * 在 iframe 中渲染单个元素为 Canvas（使用预提取的样式）
+ * 优化版本：避免重复提取样式，支持多进程并行渲染
  */
-function createCrossOriginRenderPage(): string {
+export async function renderElementInIframeWithStyles(
+  element: HTMLElement,
+  elementKey: string,
+  preExtractedStyles: string
+): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    // 为每个iframe生成唯一的进程ID
+    const processId = `${elementKey}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+    // 创建隐藏的 iframe
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "absolute";
+    iframe.style.left = "-9999px";
+    iframe.style.top = "-9999px";
+    iframe.style.width = "1px";
+    iframe.style.height = "1px";
+    iframe.style.visibility = "hidden";
+    // 添加进程标识属性
+    iframe.setAttribute("data-process-id", processId);
+
+    console.log(`创建iframe进程: ${processId} for ${elementKey}`);
+
+    // 设置超时处理
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error(`iframe 渲染超时 (进程: ${processId})`));
+    }, 30000);
+
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    iframe.onload = async () => {
+      try {
+        console.log(`iframe进程 ${processId} 加载完成，开始渲染`);
+
+        // 使用 postMessage 与跨域 iframe 通信，传入预提取的样式
+        const renderResults = await renderInCrossOriginIframe(
+          iframe.contentWindow!,
+          {
+            element: serializeElement(element),
+            elementKey: elementKey,
+            styles: preExtractedStyles, // 使用预提取的样式，避免重复提取
+            processId: processId, // 传递进程ID
+          }
+        );
+
+        console.log(`iframe进程 ${processId} 渲染完成`);
+        cleanup();
+        // 返回单个 canvas 而不是对象
+        resolve(renderResults[elementKey]);
+      } catch (error) {
+        console.error(`iframe进程 ${processId} 渲染失败:`, error);
+        cleanup();
+        reject(error);
+      }
+    };
+
+    iframe.onerror = () => {
+      console.error(`iframe进程 ${processId} 加载失败`);
+      cleanup();
+      reject(new Error(`iframe 加载失败 (进程: ${processId})`));
+    };
+
+    // 添加到 DOM 并加载跨域渲染页面，传入进程ID
+    document.body.appendChild(iframe);
+    iframe.src = createCrossOriginRenderPage(processId);
+  });
+}
+
+/**
+ * 创建单个元素的跨域渲染页面（使用data URL）
+ */
+function createCrossOriginRenderPage(processId?: string): string {
+  // 添加唯一标识符和时间戳，确保每个iframe都是独特的
+  const uniqueId = processId || Math.random().toString(36).substring(2, 15);
+  const timestamp = Date.now();
+
   const renderPageHTML = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PDF Renderer</title>
+    <title>PDF Renderer - Process ${uniqueId}</title>
+    <!-- 保持使用CDN的html2canvas，但添加进程标识 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; }
-        .render-container { position: absolute; left: -9999px; top: -9999px; visibility: hidden; }
+        body {
+            margin: 0;
+            padding: 0;
+            /* 添加进程标识，帮助调试 */
+            --process-id: '${uniqueId}';
+        }
+        .render-container {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            visibility: hidden;
+        }
     </style>
+    <!-- 添加唯一的meta标签，进一步区分不同的iframe -->
+    <meta name="process-id" content="${uniqueId}">
+    <meta name="timestamp" content="${timestamp}">
 </head>
-<body>
+<body data-process-id="${uniqueId}">
     <script>
+        const PROCESS_ID = '${uniqueId}';
+        console.log('Initializing PDF renderer process:', PROCESS_ID);
+
         window.addEventListener('message', async function(event) {
             let messageId = null;
             try {
@@ -93,18 +191,28 @@ function createCrossOriginRenderPage(): string {
                 messageId = msgId;
 
                 if (type === 'RENDER_ELEMENT') {
+                    console.log('Process', PROCESS_ID, 'received render request');
+                    const startTime = performance.now();
+
                     const result = await renderSingleElement(data);
+
+                    const endTime = performance.now();
+                    console.log('Process', PROCESS_ID, 'completed in', (endTime - startTime).toFixed(2), 'ms');
 
                     event.source.postMessage({
                         type: 'RENDER_COMPLETE',
                         messageId: messageId,
-                        data: result
+                        processId: PROCESS_ID,
+                        data: result,
+                        renderTime: endTime - startTime
                     }, '*');
                 }
             } catch (error) {
+                console.error('Process', PROCESS_ID, 'error:', error);
                 event.source.postMessage({
                     type: 'RENDER_ERROR',
                     messageId: messageId,
+                    processId: PROCESS_ID,
                     error: error.message
                 }, '*');
             }
@@ -121,34 +229,32 @@ function createCrossOriginRenderPage(): string {
             // 创建渲染容器
             const container = document.createElement('div');
             container.className = 'render-container';
+            container.setAttribute('data-process', PROCESS_ID);
             document.body.appendChild(container);
 
             const element = recreateElement(elementData);
             container.appendChild(element);
 
-            // 等待元素渲染完成
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            // 使用 html2canvas 渲染元素，让它自动检测尺寸
+            // 使用 html2canvas 渲染元素
             const canvas = await html2canvas(element, {
                 scale: window.devicePixelRatio * 2,
+                logging: false, // 减少日志输出，提高性能
                 useCORS: true,
-                allowTaint: true,
-                logging: false
             });
 
             const result = {
                 [elementKey]: {
                     dataURL: canvas.toDataURL('image/png'),
                     width: canvas.width,
-                    height: canvas.height
+                    height: canvas.height,
+                    processId: PROCESS_ID
                 }
             };
 
             document.body.removeChild(container);
             return result;
         }
-        
+
         function recreateElement(elementData) {
             const element = document.createElement(elementData.tagName);
             element.innerHTML = elementData.innerHTML;
@@ -185,8 +291,8 @@ function createCrossOriginRenderPage(): string {
 
             return element;
         }
-        
-        window.parent.postMessage({ type: 'RENDERER_READY' }, '*');
+
+        window.parent.postMessage({ type: 'RENDERER_READY', processId: PROCESS_ID }, '*');
     </script>
 </body>
 </html>`;

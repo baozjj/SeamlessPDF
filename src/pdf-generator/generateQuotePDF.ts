@@ -4,7 +4,8 @@ import {
   detectBlankLastPage,
 } from "./pdfUtils";
 import jsPDF from "jspdf";
-import { renderElementInIframe } from "./iframe-renderer";
+import { renderElementInIframeWithStyles } from "./iframe-renderer";
+import { extractPageStyles } from "./element-serializer";
 
 /**
  * PDF 生成配置选项
@@ -124,11 +125,27 @@ async function renderElementsToCanvas({
   content: HTMLCanvasElement;
   footer: HTMLCanvasElement;
 }> {
+  // 优化：预先提取样式，避免重复提取
+  console.log("开始提取页面样式...");
+  const stylesStartTime = performance.now();
+  const pageStyles = await extractPageStyles();
+  const stylesEndTime = performance.now();
+  console.log(
+    `样式提取耗时: ${(stylesEndTime - stylesStartTime).toFixed(2)}ms`
+  );
+
+  // 使用iframe并行渲染
+  console.log("开始iframe并行渲染...");
+  const parallelStartTime = performance.now();
   const [header, content, footer] = await Promise.all([
-    renderElementInIframe(headerElement, "header"),
-    renderElementInIframe(contentElement, "content"),
-    renderElementInIframe(footerElement, "footer"),
+    renderElementInIframeWithStyles(headerElement, "header", pageStyles),
+    renderElementInIframeWithStyles(contentElement, "content", pageStyles),
+    renderElementInIframeWithStyles(footerElement, "footer", pageStyles),
   ]);
+  const parallelEndTime = performance.now();
+  console.log(
+    `iframe并行渲染耗时: ${(parallelEndTime - parallelStartTime).toFixed(2)}ms`
+  );
 
   return { header, content, footer };
 }
@@ -314,6 +331,7 @@ async function preRenderAllFooters({
   onFooterUpdate: PdfGenerationOptions["onFooterUpdate"];
 }): Promise<HTMLCanvasElement[]> {
   const preRenderedFooters = [];
+  const pageStyles = await extractPageStyles();
 
   for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
     const pageNumber = pageIndex + 1;
@@ -327,9 +345,10 @@ async function preRenderAllFooters({
     const cloneElement = createStyledClone(footerElement);
 
     // 渲染当前页脚
-    const footerCanvas = renderElementInIframe(
+    const footerCanvas = renderElementInIframeWithStyles(
       cloneElement,
-      `footer-page-${pageNumber}`
+      `footer-page-${pageNumber}`,
+      pageStyles
     );
     preRenderedFooters.push(footerCanvas);
   }
