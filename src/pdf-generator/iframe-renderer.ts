@@ -3,76 +3,13 @@
  * 提供跨域 iframe 多进程渲染功能
  */
 
-import { serializeElement, extractPageStyles } from "./element-serializer";
-
-/**
- * 在 iframe 中渲染单个元素为 Canvas
- * 这样可以避免阻塞主线程，提高用户界面响应性
- */
-export async function renderElementInIframe(
-  element: HTMLElement,
-  elementKey?: string
-): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    // 创建隐藏的 iframe
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "absolute";
-    iframe.style.left = "-9999px";
-    iframe.style.top = "-9999px";
-    iframe.style.width = "1px";
-    iframe.style.height = "1px";
-    iframe.style.visibility = "hidden";
-
-    // 设置超时处理
-    const timeoutId = setTimeout(() => {
-      cleanup();
-      reject(new Error("iframe 渲染超时"));
-    }, 30000);
-
-    const cleanup = () => {
-      clearTimeout(timeoutId);
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    };
-
-    iframe.onload = async () => {
-      try {
-        // 使用 postMessage 与跨域 iframe 通信
-        const renderResults = await renderInCrossOriginIframe(
-          iframe.contentWindow!,
-          {
-            element: serializeElement(element),
-            elementKey: elementKey || "element",
-            styles: await extractPageStyles(),
-          }
-        );
-
-        cleanup();
-        // 返回单个 canvas 而不是对象
-        resolve(renderResults[elementKey || "element"]);
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
-    };
-
-    iframe.onerror = () => {
-      cleanup();
-      reject(new Error("iframe 加载失败"));
-    };
-
-    // 添加到 DOM 并加载跨域渲染页面
-    document.body.appendChild(iframe);
-    iframe.src = createCrossOriginRenderPage();
-  });
-}
+import { serializeElement } from "./element-serializer";
 
 /**
  * 在 iframe 中渲染单个元素为 Canvas（使用预提取的样式）
  * 优化版本：避免重复提取样式，支持多进程并行渲染
  */
-export async function renderElementInIframeWithStyles(
+export async function renderElementInIframe(
   element: HTMLElement,
   elementKey: string,
   preExtractedStyles: string
@@ -139,16 +76,17 @@ export async function renderElementInIframeWithStyles(
       reject(new Error(`iframe 加载失败 (进程: ${processId})`));
     };
 
-    // 添加到 DOM 并加载跨域渲染页面，传入进程ID
+    // iframe.sandbox = "allow-scripts ";
+    iframe.srcdoc = createRenderPage(processId);
+
     document.body.appendChild(iframe);
-    iframe.src = createCrossOriginRenderPage(processId);
   });
 }
 
 /**
- * 创建单个元素的跨域渲染页面（使用data URL）
+ * 创建单个元素的渲染页面（使用data URL）
  */
-function createCrossOriginRenderPage(processId?: string): string {
+function createRenderPage(processId?: string): string {
   // 添加唯一标识符和时间戳，确保每个iframe都是独特的
   const uniqueId = processId || Math.random().toString(36).substring(2, 15);
   const timestamp = Date.now();
@@ -160,7 +98,8 @@ function createCrossOriginRenderPage(processId?: string): string {
     <meta charset="UTF-8">
     <title>PDF Renderer - Process ${uniqueId}</title>
     <!-- 保持使用CDN的html2canvas，但添加进程标识 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
     <style>
         body {
             margin: 0;
@@ -236,10 +175,10 @@ function createCrossOriginRenderPage(processId?: string): string {
             container.appendChild(element);
 
             // 使用 html2canvas 渲染元素
-            const canvas = await html2canvas(element, {
+           const canvas = await html2canvas(element, {
                 scale: window.devicePixelRatio * 2,
                 logging: false, // 减少日志输出，提高性能
-                useCORS: true,
+                useCORS: false,
             });
 
             const result = {
@@ -297,7 +236,11 @@ function createCrossOriginRenderPage(processId?: string): string {
 </body>
 </html>`;
 
-  return "data:text/html;charset=utf-8," + encodeURIComponent(renderPageHTML);
+  // const blob = new Blob([renderPageHTML], { type: "text/html" });
+  // const blobUrl = URL.createObjectURL(blob);
+  // return blobUrl;
+
+  return renderPageHTML;
 }
 
 /**

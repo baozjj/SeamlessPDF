@@ -4,8 +4,9 @@ import {
   detectBlankLastPage,
 } from "./pdfUtils";
 import jsPDF from "jspdf";
-import { renderElementInIframeWithStyles } from "./iframe-renderer";
+import { renderElementInIframe } from "./iframe-renderer";
 import { extractPageStyles } from "./element-serializer";
+import html2canvas from "html2canvas";
 
 /**
  * PDF 生成配置选项
@@ -137,11 +138,38 @@ async function renderElementsToCanvas({
   // 使用iframe并行渲染
   console.log("开始iframe并行渲染...");
   const parallelStartTime = performance.now();
+
   const [header, content, footer] = await Promise.all([
-    renderElementInIframeWithStyles(headerElement, "header", pageStyles),
-    renderElementInIframeWithStyles(contentElement, "content", pageStyles),
-    renderElementInIframeWithStyles(footerElement, "footer", pageStyles),
+    renderElementInIframe(headerElement, "header", pageStyles),
+    renderElementInIframe(contentElement, "content", pageStyles),
+    renderElementInIframe(footerElement, "footer", pageStyles),
   ]);
+  // const header = await renderElementInIframe(
+  //   headerElement,
+  //   "header",
+  //   pageStyles
+  // );
+  // const content = await renderElementInIframe(
+  //   contentElement,
+  //   "content",
+  //   pageStyles
+  // );
+  // const footer = await renderElementInIframe(
+  //   footerElement,
+  //   "footer",
+  //   pageStyles
+  // );
+
+  // const header = await html2canvas(headerElement, {
+  //   scale: window.devicePixelRatio * 2,
+  // });
+  // const content = await html2canvas(contentElement, {
+  //   scale: window.devicePixelRatio * 2,
+  // });
+  // const footer = await html2canvas(footerElement, {
+  //   scale: window.devicePixelRatio * 2,
+  // });
+
   const parallelEndTime = performance.now();
   console.log(
     `iframe并行渲染耗时: ${(parallelEndTime - parallelStartTime).toFixed(2)}ms`
@@ -345,7 +373,7 @@ async function preRenderAllFooters({
     const cloneElement = createStyledClone(footerElement);
 
     // 渲染当前页脚
-    const footerCanvas = renderElementInIframeWithStyles(
+    const footerCanvas = renderElementInIframe(
       cloneElement,
       `footer-page-${pageNumber}`,
       pageStyles
