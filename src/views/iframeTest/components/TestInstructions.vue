@@ -1,20 +1,20 @@
 <template>
   <div class="instructions">
-    <h3>测试说明</h3>
+    <h3>Canvas生成说明</h3>
     <ul>
       <li>观察上方的动画元素（旋转星星、移动小球、计数器）是否流畅</li>
-      <li>点击"创建长任务 iframe"按钮，观察动画是否被阻塞</li>
-      <li>点击"主线程长任务对比"按钮，对比主线程执行长任务的效果</li>
-      <li>通过 FPS 计数器量化渲染性能</li>
-      <li>打开控制台查看详细的执行日志</li>
+      <li>点击"生成Canvas图像"按钮，在iframe中创建DOM结构并生成canvas图像</li>
+      <li>生成的canvas图像将显示在控制面板下方</li>
+      <li>通过 FPS 计数器观察动画性能</li>
+      <li>打开控制台查看详细的执行日志和canvas生成过程</li>
     </ul>
   </div>
 </template>
 
 <script>
 export default {
-  name: 'TestInstructions'
-}
+  name: "TestInstructions",
+};
 </script>
 
 <style scoped>

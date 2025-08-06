@@ -1,4 +1,4 @@
-import html2canvas from "html2canvas";
+import { snapdom } from "@zumer/snapdom";
 
 /**
  * 页面分析结果接口
@@ -71,8 +71,9 @@ const TABLE_BORDER_HEIGHT = 4;
 export async function captureElementAsCanvas(
   element: HTMLElement
 ): Promise<HTMLCanvasElement> {
-  return await html2canvas(element, {
+  return await snapdom.toCanvas(element, {
     scale: window.devicePixelRatio * 2,
+    useProxy: "https://corsproxy.io/?", // 添加代理支持
   });
 }
 

@@ -6,13 +6,24 @@
 import { serializeElement } from "./element-serializer";
 
 /**
+ * iframe 渲染配置选项
+ */
+interface IframeRenderOptions {
+  /** 是否启用沙盒模式 */
+  enableSandbox?: boolean;
+  /** 沙盒权限设置 */
+  sandboxPermissions?: string;
+}
+
+/**
  * 在 iframe 中渲染单个元素为 Canvas（使用预提取的样式）
  * 优化版本：避免重复提取样式，支持多进程并行渲染
  */
 export async function renderElementInIframe(
   element: HTMLElement,
   elementKey: string,
-  preExtractedStyles: string
+  preExtractedStyles: string,
+  options: IframeRenderOptions = {}
 ): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     // 为每个iframe生成唯一的进程ID
@@ -28,6 +39,16 @@ export async function renderElementInIframe(
     iframe.style.visibility = "hidden";
     // 添加进程标识属性
     iframe.setAttribute("data-process-id", processId);
+
+    // 配置沙盒模式
+    const { enableSandbox = false, sandboxPermissions = "allow-scripts" } =
+      options;
+    if (enableSandbox) {
+      iframe.sandbox = sandboxPermissions;
+      console.log(
+        `iframe进程 ${processId} 启用沙盒模式: ${sandboxPermissions}`
+      );
+    }
 
     console.log(`创建iframe进程: ${processId} for ${elementKey}`);
 
@@ -77,7 +98,8 @@ export async function renderElementInIframe(
     };
 
     // iframe.sandbox = "allow-scripts ";
-    iframe.srcdoc = createRenderPage(processId);
+    iframe.src = createRenderPage(processId);
+    // iframe.srcdoc = createRenderPage(processId);
 
     document.body.appendChild(iframe);
   });
@@ -97,8 +119,8 @@ function createRenderPage(processId?: string): string {
 <head>
     <meta charset="UTF-8">
     <title>PDF Renderer - Process ${uniqueId}</title>
-    <!-- 保持使用CDN的html2canvas，但添加进程标识 -->
-		<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- 使用CDN的snapDOM，替换html2canvas -->
+		<script src="https://cdn.jsdelivr.net/npm/@zumer/snapdom/dist/snapdom.min.js"></script>
 
     <style>
         body {
@@ -174,11 +196,11 @@ function createRenderPage(processId?: string): string {
             const element = recreateElement(elementData);
             container.appendChild(element);
 
-            // 使用 html2canvas 渲染元素
-           const canvas = await html2canvas(element, {
+            // 使用 snapDOM 渲染元素
+           const canvas = await snapdom.toCanvas(element, {
                 scale: window.devicePixelRatio * 2,
-                logging: false, // 减少日志输出，提高性能
-                useCORS: false,
+                fast: true, // 快速模式，减少延迟
+                compress: true, // 压缩样式
             });
 
             const result = {
@@ -236,11 +258,11 @@ function createRenderPage(processId?: string): string {
 </body>
 </html>`;
 
-  // const blob = new Blob([renderPageHTML], { type: "text/html" });
-  // const blobUrl = URL.createObjectURL(blob);
-  // return blobUrl;
+  const blob = new Blob([renderPageHTML], { type: "text/html" });
+  const blobUrl = URL.createObjectURL(blob);
+  return blobUrl;
 
-  return renderPageHTML;
+  // return renderPageHTML;
 }
 
 /**

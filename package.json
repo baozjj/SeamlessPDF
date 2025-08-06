@@ -13,7 +13,7 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "html2canvas": "^1.4.1",
+    "@zumer/snapdom": "^1.9.7",
     "jspdf": "^3.0.1",
     "pinia": "^3.0.3",
     "tdesign-vue-next": "^1.15.1",

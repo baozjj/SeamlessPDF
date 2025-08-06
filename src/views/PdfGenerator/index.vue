@@ -1,16 +1,14 @@
 <template>
   <div class="pdf-generator-container">
-    <div class="controls">
-      <t-button
-        @click="handleExport"
-        :loading="isExporting"
-        theme="primary"
-        size="large"
-      >
-        <template #icon><t-icon name="download" /></template>
-        导出为PDF
-      </t-button>
-    </div>
+    <t-button
+      @click="handleExport"
+      :loading="isExporting"
+      theme="primary"
+      size="large"
+    >
+      <template #icon><t-icon name="download" /></template>
+      导出为PDF
+    </t-button>
 
     <div id="pdf-preview" class="report-preview">
       <ReportHeader ref="reportHeader" />
@@ -98,10 +96,10 @@ const handleExport = async () => {
 .pdf-generator-container {
   padding: 2rem;
   background-color: #f0f2f5;
-}
-.controls {
-  margin-bottom: 2rem;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
 }
 .report-preview {
   width: 800px;

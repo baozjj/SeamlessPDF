@@ -17,7 +17,55 @@
       :bordered="true"
     ></t-table>
 
-    <h2>3. 总结与展望</h2>
+    <h2>3. 图片渲染测试</h2>
+    <p>
+      以下是不同类型图片的渲染测试，用于验证 snapDOM
+      在各种场景下的图片处理能力：
+    </p>
+
+    <!-- Base64 编码图片测试 -->
+    <div class="image-test-section">
+      <h3>3.1 Base64 编码图片</h3>
+      <p>这是一个 base64 编码的小图标，应该能在所有环境中正常显示：</p>
+      <img
+        :src="base64LargeImage"
+        alt="Base64 测试图片"
+        class="test-image small"
+      />
+    </div>
+
+    <!-- SVG 图片测试 -->
+    <div class="image-test-section">
+      <h3>3.2 内联 SVG 图片</h3>
+      <p>内联 SVG 图形，测试矢量图形的渲染效果：</p>
+      <svg width="100" height="100" class="test-image small">
+        <circle
+          cx="50"
+          cy="50"
+          r="40"
+          stroke="black"
+          stroke-width="3"
+          fill="red"
+        />
+        <text x="50" y="55" text-anchor="middle" fill="white" font-size="12">
+          SVG
+        </text>
+      </svg>
+    </div>
+
+    <!-- CSS 背景图片测试 -->
+    <div class="image-test-section">
+      <h3>3.3 CSS 背景图片</h3>
+      <p>使用 CSS 背景图片的元素：</p>
+      <div
+        class="background-image-test"
+        :style="{ backgroundImage: `url(${base64LargeImage})` }"
+      >
+        背景图片测试
+      </div>
+    </div>
+
+    <h2>4. 总结与展望</h2>
     <p>
       综合本季度的各项数据表现，我们在既定战略目标的指引下取得了预期成果。展望未来，我们将继续深化产品创新，优化用户体验，扩大市场份额。同时，我们将加强内部运营管理，提升组织效能，为可持续发展奠定坚实基础。通过持续的技术投入和人才培养，我们有信心在下一季度实现更大突破。
     </p>
@@ -30,6 +78,11 @@ import { Table as TTable } from "tdesign-vue-next";
 
 const el = ref<HTMLElement | null>(null);
 defineExpose({ el });
+
+// Base64 编码的较大测试图片（彩色方块）
+const base64LargeImage = ref(
+  "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzAwNjZjYyIvPgogIDx0ZXh0IHg9IjEwMCIgeT0iNTUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkJhc2U2NCBJbWFnZTwvdGV4dD4KPC9zdmc+"
+);
 
 const columns = [
   { colKey: "id", title: "指标编号" },

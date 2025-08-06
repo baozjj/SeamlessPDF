@@ -6,7 +6,6 @@ import {
 import jsPDF from "jspdf";
 import { renderElementInIframe } from "./iframe-renderer";
 import { extractPageStyles } from "./element-serializer";
-import html2canvas from "html2canvas";
 
 /**
  * PDF 生成配置选项
@@ -140,9 +139,15 @@ async function renderElementsToCanvas({
   const parallelStartTime = performance.now();
 
   const [header, content, footer] = await Promise.all([
-    renderElementInIframe(headerElement, "header", pageStyles),
-    renderElementInIframe(contentElement, "content", pageStyles),
-    renderElementInIframe(footerElement, "footer", pageStyles),
+    renderElementInIframe(headerElement, "header", pageStyles, {
+      enableSandbox: true,
+    }),
+    renderElementInIframe(contentElement, "content", pageStyles, {
+      enableSandbox: true,
+    }),
+    renderElementInIframe(footerElement, "footer", pageStyles, {
+      enableSandbox: true,
+    }),
   ]);
   // const header = await renderElementInIframe(
   //   headerElement,

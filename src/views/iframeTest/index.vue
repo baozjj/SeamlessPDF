@@ -1,6 +1,6 @@
 <template>
   <div class="iframe-test-container">
-    <h1>iframe 性能测试页面</h1>
+    <h1>iframe Canvas生成测试页面</h1>
 
     <!-- 动画显示区域 -->
     <AnimationDisplay />
