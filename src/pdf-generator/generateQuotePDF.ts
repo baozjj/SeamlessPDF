@@ -381,7 +381,10 @@ async function preRenderAllFooters({
     const footerCanvas = renderElementInIframe(
       cloneElement,
       `footer-page-${pageNumber}`,
-      pageStyles
+      pageStyles,
+      {
+        enableSandbox: true,
+      }
     );
     preRenderedFooters.push(footerCanvas);
   }

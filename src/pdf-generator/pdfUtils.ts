@@ -53,7 +53,7 @@ const DEFAULT_WHITE_PIXEL_THRESHOLD = 250;
 /**
  * 默认空白页高度阈值（像素）
  */
-const DEFAULT_BLANK_PAGE_HEIGHT_THRESHOLD = 200;
+const DEFAULT_BLANK_PAGE_HEIGHT_THRESHOLD = 100;
 
 /**
  * 表格边框检测的向上偏移量（像素）
