@@ -25,7 +25,7 @@ import {
   Icon as TIcon,
   MessagePlugin,
 } from "tdesign-vue-next";
-import { generateIntelligentPdf } from "@/pdf-generator/generateQuotePDF";
+import { generateIntelligentPdf } from "@/pdf-generator/index";
 
 import ReportHeader from "@/components/ReportHeader.vue";
 import ReportContent from "@/components/ReportContent.vue";
