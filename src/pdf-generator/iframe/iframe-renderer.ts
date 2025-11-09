@@ -308,7 +308,7 @@ async function renderInCrossOriginIframe(
  * 将base64数据转换为Canvas对象
  */
 async function convertDataURLsToCanvases(
-  data: any
+  data: Record<string, CanvasRenderResult>
 ): Promise<Record<string, HTMLCanvasElement>> {
   const result: Record<string, HTMLCanvasElement> = {};
 
