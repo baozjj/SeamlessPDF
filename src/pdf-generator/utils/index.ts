@@ -19,3 +19,7 @@ export {
   detectTableBorderRegion,
   findTableBorderBottom,
 } from './table-detector';
+
+export {
+  yieldToMain
+} from './async-utils';

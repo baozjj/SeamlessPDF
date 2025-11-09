@@ -11,22 +11,25 @@ import type {
   PdfGenerationOptions,
 } from "../types";
 import { preRenderAllFooters, renderSinglePage } from "../rendering";
+import { yieldToMain } from "../utils";
 
 /**
  * 生成最终的PDF文档
+ * 
  */
 export async function generatePdfDocument({
   canvasElements,
   layoutMetrics,
   pageBreakCoordinates,
   footerElement,
-  onFooterUpdate,
+  onFooterUpdate
 }: {
   canvasElements: CanvasElements;
   layoutMetrics: PageLayoutMetrics;
   pageBreakCoordinates: PageBreakCoordinate[];
   footerElement: HTMLElement;
   onFooterUpdate: PdfGenerationOptions["onFooterUpdate"];
+  batchSize?: number;
 }): Promise<jsPDF> {
   const pdf = new jsPDF("portrait", "pt", "a4");
   const totalPages = pageBreakCoordinates.length;
@@ -52,6 +55,8 @@ export async function generatePdfDocument({
       pageBreakCoordinates,
       preRenderedFooter: preRenderedFooters[pageIndex],
     });
+
+    await yieldToMain();
   }
 
   return pdf;
