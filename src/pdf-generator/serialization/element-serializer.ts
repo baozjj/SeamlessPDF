@@ -7,15 +7,11 @@ import type { SerializedElement } from "../types";
 
 /**
  * 序列化元素为可传输的数据
- *
- * @param element - 要序列化的HTML元素
- * @returns SerializedElement - 序列化后的元素数据
  */
 export function serializeElement(element: HTMLElement): SerializedElement {
   return {
     tagName: element.tagName,
     innerHTML: element.innerHTML,
-    outerHTML: element.outerHTML,
     styles: getComputedStylesObject(element),
     attributes: getElementAttributes(element),
     offsetWidth: element.offsetWidth,
@@ -26,9 +22,6 @@ export function serializeElement(element: HTMLElement): SerializedElement {
 
 /**
  * 序列化子元素的样式
- *
- * @param element - 父元素
- * @returns Record<string, any> - 子元素样式映射
  */
 function serializeChildrenStyles(element: HTMLElement): Record<string, any> {
   const childrenStyles: Record<string, any> = {};
@@ -49,15 +42,12 @@ function serializeChildrenStyles(element: HTMLElement): Record<string, any> {
 
 /**
  * 获取元素的计算样式对象
- *
- * @param element - HTML元素
- * @returns Record<string, string> - 样式对象
  */
 function getComputedStylesObject(element: HTMLElement): Record<string, string> {
   const computedStyles = window.getComputedStyle(element);
   const styles: Record<string, string> = {};
 
-  // 重要的样式属性列表，确保布局正确
+  // 重要的样式属性列表
   const importantProperties = [
     // 尺寸和布局
     "width",
@@ -144,9 +134,6 @@ function getComputedStylesObject(element: HTMLElement): Record<string, string> {
 
 /**
  * 获取元素的属性
- *
- * @param element - HTML元素
- * @returns Record<string, string> - 属性对象
  */
 function getElementAttributes(element: HTMLElement): Record<string, string> {
   const attributes: Record<string, string> = {};

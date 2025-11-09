@@ -11,10 +11,7 @@ import {
 
 /**
  * 检测表格边框区域
- *
- * @param yCoordinate - Y坐标
- * @param canvas - Canvas元素
- * @returns TableBorderDetectionResult - 表格边框检测结果
+ * 向上和向下查找完整的表格边框范围
  */
 export function detectTableBorderRegion(
   yCoordinate: number,
@@ -58,21 +55,18 @@ export function detectTableBorderRegion(
     }
   }
 
+  // 只允许在边框底部分割
   const isWithinBorder =
     borderTop < borderBottom &&
     yCoordinate >= borderTop &&
     yCoordinate <= borderBottom &&
-    yCoordinate !== borderBottom; // 只允许在边框底部分割
+    yCoordinate !== borderBottom;
 
   return { isWithinBorder, borderTop, borderBottom };
 }
 
 /**
  * 查找表格边框的底部位置
- *
- * @param startY - 起始Y坐标
- * @param canvas - Canvas元素
- * @returns number - 边框底部位置
  */
 export function findTableBorderBottom(
   startY: number,
@@ -90,9 +84,9 @@ export function findTableBorderBottom(
     const lineChars = determineLineCharacteristics(colorDist, canvas.width);
 
     if (!lineChars.isTableLine) {
-      return y - 1; // 返回最后一个边框行
+      return y - 1;
     }
   }
 
-  return startY; // 如果没找到边框结束，返回起始位置
+  return startY;
 }

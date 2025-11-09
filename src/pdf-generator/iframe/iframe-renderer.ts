@@ -13,14 +13,8 @@ import { RENDER_TIMEOUT_MS, IMAGE_LOAD_TIMEOUT_MS } from "../constants";
 import { serializeElement } from "../serialization";
 
 /**
- * 在iframe中渲染单个元素为Canvas（使用预提取的样式）
- * 优化版本：避免重复提取样式，支持多进程并行渲染
- *
- * @param element - 要渲染的HTML元素
- * @param elementKey - 元素键名
- * @param preExtractedStyles - 预提取的样式
- * @param options - 渲染选项
- * @returns Promise<HTMLCanvasElement> - 渲染后的Canvas
+ * 在iframe中渲染单个元素为Canvas
+ * 使用预提取的样式，支持多进程并行渲染
  */
 export async function renderElementInIframe(
   element: HTMLElement,
@@ -28,17 +22,10 @@ export async function renderElementInIframe(
   preExtractedStyles: string,
   options: IframeRenderOptions = {}
 ): Promise<HTMLCanvasElement> {
-  const startTime = performance.now();
-  console.log(`🚀 [性能监控] 调用 #${elementKey} 开始 - renderElementInIframe`);
-
   return new Promise((resolve, reject) => {
-    // 为每个iframe生成唯一的进程ID
     const processId = generateProcessId(elementKey);
-
-    // 创建隐藏的iframe
     const iframe = createHiddenIframe(processId, options);
 
-    // 设置超时处理
     const timeoutId = setTimeout(() => {
       cleanup();
       reject(new Error(`iframe 渲染超时 (进程: ${processId})`));
@@ -53,7 +40,6 @@ export async function renderElementInIframe(
 
     iframe.onload = async () => {
       try {
-        // 使用postMessage与跨域iframe通信，传入预提取的样式
         const renderResults = await renderInCrossOriginIframe(
           iframe.contentWindow!,
           {
@@ -62,12 +48,6 @@ export async function renderElementInIframe(
             styles: preExtractedStyles,
             processId: processId,
           }
-        );
-
-        const endTime = performance.now();
-        const duration = endTime - startTime;
-        console.log(
-          `✅ [性能监控] 调用 #${elementKey} 完成: ${duration.toFixed(3)}ms`
         );
 
         cleanup();
@@ -91,10 +71,7 @@ export async function renderElementInIframe(
 }
 
 /**
- * 生成进程ID
- *
- * @param elementKey - 元素键名
- * @returns string - 进程ID
+ * 生成唯一的进程ID
  */
 function generateProcessId(elementKey: string): string {
   return `${elementKey}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -102,10 +79,6 @@ function generateProcessId(elementKey: string): string {
 
 /**
  * 创建隐藏的iframe
- *
- * @param processId - 进程ID
- * @param options - 渲染选项
- * @returns HTMLIFrameElement - iframe元素
  */
 function createHiddenIframe(
   processId: string,
@@ -120,7 +93,6 @@ function createHiddenIframe(
   iframe.style.visibility = "hidden";
   iframe.setAttribute("data-process-id", processId);
 
-  // 配置沙盒模式
   const { enableSandbox = false, sandboxPermissions = "allow-scripts" } =
     options;
   if (enableSandbox) {
@@ -131,10 +103,7 @@ function createHiddenIframe(
 }
 
 /**
- * 创建单个元素的渲染页面
- *
- * @param processId - 进程ID
- * @returns string - 渲染页面HTML
+ * 创建iframe渲染页面
  */
 function createRenderPage(processId?: string): string {
   const uniqueId = processId || Math.random().toString(36).substring(2, 15);
@@ -275,10 +244,6 @@ function createRenderPage(processId?: string): string {
 
 /**
  * 在跨域iframe中渲染元素
- *
- * @param iframeWindow - iframe窗口对象
- * @param data - 渲染数据
- * @returns Promise<Record<string, HTMLCanvasElement>> - 渲染结果
  */
 async function renderInCrossOriginIframe(
   iframeWindow: Window,
@@ -341,9 +306,6 @@ async function renderInCrossOriginIframe(
 
 /**
  * 将base64数据转换为Canvas对象
- *
- * @param data - 渲染结果数据
- * @returns Promise<Record<string, HTMLCanvasElement>> - Canvas对象映射
  */
 async function convertDataURLsToCanvases(
   data: any

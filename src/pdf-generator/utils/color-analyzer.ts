@@ -11,9 +11,6 @@ import {
 
 /**
  * 分析图像数据中的颜色分布
- *
- * @param imageData - 图像数据
- * @returns Record<string, number> - 颜色分布统计
  */
 export function analyzeColorDistribution(
   imageData: Uint8ClampedArray
@@ -29,11 +26,7 @@ export function analyzeColorDistribution(
 }
 
 /**
- * 确定线条特征
- *
- * @param colorDistribution - 颜色分布统计
- * @param lineWidth - 线条宽度
- * @returns LineCharacteristics - 线条特征
+ * 确定线条特征（纯白色或表格线）
  */
 export function determineLineCharacteristics(
   colorDistribution: Record<string, number>,
@@ -55,9 +48,6 @@ export function determineLineCharacteristics(
 
 /**
  * 检查图像数据是否完全为白色
- *
- * @param imageData - 图像数据
- * @returns boolean - 是否完全为白色
  */
 export function isLineCompletelyWhite(imageData: Uint8ClampedArray): boolean {
   for (let i = 0; i < imageData.length; i += 4) {

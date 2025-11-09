@@ -8,27 +8,19 @@ import { DEFAULT_SCALE_FACTOR, A4_PAGE_DIMENSIONS } from "../constants";
 
 /**
  * 将DOM元素渲染为Canvas
- *
  * 自动根据设备像素比进行缩放，确保在高DPI设备上的清晰度
- *
- * @param element - 要渲染的DOM元素
- * @returns Promise<HTMLCanvasElement> - 渲染后的Canvas元素
  */
 export async function captureElementAsCanvas(
   element: HTMLElement
 ): Promise<HTMLCanvasElement> {
   return await snapdom.toCanvas(element, {
     scale: window.devicePixelRatio * DEFAULT_SCALE_FACTOR,
-    useProxy: "https://corsproxy.io/?", // 添加代理支持
+    useProxy: "https://corsproxy.io/?",
   });
 }
 
 /**
  * 计算Canvas在指定目标宽度下的缩放尺寸
- *
- * @param canvas - 源Canvas元素
- * @param targetWidth - 目标宽度，默认为A4纸张宽度
- * @returns ScaledDimensions - 缩放后的尺寸信息
  */
 export function calculateScaledDimensions(
   canvas: HTMLCanvasElement,
@@ -43,12 +35,7 @@ export function calculateScaledDimensions(
 
 /**
  * 检测Canvas是否为视觉上的白色画布
- *
  * 通过分析所有像素点，判断画布是否主要由接近白色的像素组成
- *
- * @param canvas - 要检测的Canvas元素
- * @param whiteThreshold - 白色判断阈值
- * @returns boolean - 是否为白色画布
  */
 export function isCanvasVisuallyWhite(
   canvas: HTMLCanvasElement,
@@ -77,58 +64,21 @@ export function isCanvasVisuallyWhite(
 }
 
 /**
- * 提取页面内容区域为独立的Canvas
- *
- * @param sourceCanvas - 源Canvas
- * @param startY - 起始Y坐标
- * @param endY - 结束Y坐标
- * @returns HTMLCanvasElement - 提取的页面内容Canvas
+ * 创建Canvas切片
+ * 从源Canvas中提取指定Y坐标范围的内容
  */
-export function extractPageContentCanvas(
+export function createCanvasSlice(
   sourceCanvas: HTMLCanvasElement,
   startY: number,
   endY: number
 ): HTMLCanvasElement {
-  const extractedCanvas = document.createElement("canvas");
-  extractedCanvas.width = sourceCanvas.width;
-  extractedCanvas.height = endY - startY;
-
-  const context = extractedCanvas.getContext("2d")!;
-  context.drawImage(
-    sourceCanvas,
-    0,
-    startY,
-    extractedCanvas.width,
-    extractedCanvas.height,
-    0,
-    0,
-    extractedCanvas.width,
-    extractedCanvas.height
-  );
-
-  return extractedCanvas;
-}
-
-/**
- * 创建内容切片Canvas
- *
- * @param contentCanvas - 源内容Canvas
- * @param startY - 起始Y坐标
- * @param endY - 结束Y坐标
- * @returns HTMLCanvasElement - 切片Canvas
- */
-export function createContentSliceCanvas(
-  contentCanvas: HTMLCanvasElement,
-  startY: number,
-  endY: number
-): HTMLCanvasElement {
   const sliceCanvas = document.createElement("canvas");
-  sliceCanvas.width = contentCanvas.width;
+  sliceCanvas.width = sourceCanvas.width;
   sliceCanvas.height = endY - startY;
 
   const context = sliceCanvas.getContext("2d")!;
   context.drawImage(
-    contentCanvas,
+    sourceCanvas,
     0,
     startY,
     sliceCanvas.width,

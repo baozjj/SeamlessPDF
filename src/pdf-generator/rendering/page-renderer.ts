@@ -10,13 +10,11 @@ import type {
   PageBreakCoordinate,
 } from "../types";
 import { A4_PAGE_DIMENSIONS } from "../constants";
-import { createContentSliceCanvas } from "../utils";
+import { createCanvasSlice } from "../utils";
 import { calculateScaledContentHeight } from "../layout";
 
 /**
  * 渲染单个页面
- *
- * @param config - 页面渲染配置
  */
 export async function renderSinglePage({
   pdf,
@@ -33,10 +31,8 @@ export async function renderSinglePage({
   pageBreakCoordinates: PageBreakCoordinate[];
   preRenderedFooter: HTMLCanvasElement;
 }): Promise<void> {
-  // 渲染页眉
   renderPageHeader(pdf, canvasElements.header, layoutMetrics.headerHeight);
 
-  // 渲染页面内容
   await renderPageContent({
     pdf,
     pageIndex,
@@ -45,23 +41,18 @@ export async function renderSinglePage({
     pageBreakCoordinates,
   });
 
-  // 渲染页脚（使用预渲染的页脚）
   pdf.addImage(
     preRenderedFooter,
     "JPEG",
     0,
     A4_PAGE_DIMENSIONS.HEIGHT - layoutMetrics.footerHeight,
     A4_PAGE_DIMENSIONS.WIDTH,
-    layoutMetrics.footerHeight
+    layoutMetrics.footerHeight,
   );
 }
 
 /**
  * 渲染页眉
- *
- * @param pdf - PDF文档实例
- * @param headerCanvas - 页眉Canvas
- * @param headerHeight - 页眉高度
  */
 function renderPageHeader(
   pdf: jsPDF,
@@ -69,19 +60,17 @@ function renderPageHeader(
   headerHeight: number
 ): void {
   pdf.addImage(
-    headerCanvas.toDataURL("image/jpeg", 1.0),
+    headerCanvas.toDataURL("image/jpeg", 0.3),
     "JPEG",
     0,
     0,
     A4_PAGE_DIMENSIONS.WIDTH,
-    headerHeight
+    headerHeight,
   );
 }
 
 /**
  * 渲染页面内容
- *
- * @param config - 内容渲染配置
  */
 async function renderPageContent({
   pdf,
@@ -97,7 +86,7 @@ async function renderPageContent({
   pageBreakCoordinates: PageBreakCoordinate[];
 }): Promise<void> {
   const { startY, endY } = pageBreakCoordinates[pageIndex];
-  const contentSliceCanvas = createContentSliceCanvas(
+  const contentSliceCanvas = createCanvasSlice(
     canvasElements.content,
     startY,
     endY
@@ -110,11 +99,11 @@ async function renderPageContent({
   );
 
   pdf.addImage(
-    contentSliceCanvas.toDataURL("image/jpeg", 1.0),
+    contentSliceCanvas.toDataURL("image/jpeg", 0.6),
     "JPEG",
     0,
     layoutMetrics.headerHeight,
     A4_PAGE_DIMENSIONS.WIDTH,
-    scaledContentHeight
+    scaledContentHeight,
   );
 }

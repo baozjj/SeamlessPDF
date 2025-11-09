@@ -9,9 +9,6 @@ import { extractPageStyles, createStyledClone } from "../serialization";
 
 /**
  * 预渲染所有页脚
- *
- * @param config - 页脚渲染配置
- * @returns Promise<HTMLCanvasElement[]> - 预渲染的页脚Canvas数组
  */
 export async function preRenderAllFooters({
   footerElement,
@@ -28,15 +25,12 @@ export async function preRenderAllFooters({
   for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
     const pageNumber = pageIndex + 1;
 
-    // 更新页脚内容
     if (onFooterUpdate) {
       await Promise.resolve(onFooterUpdate(pageNumber, totalPages));
     }
 
-    // 创建页脚克隆并复制计算样式
     const cloneElement = createStyledClone(footerElement);
 
-    // 渲染当前页脚
     const footerCanvas = renderElementInIframe(
       cloneElement,
       `footer-page-${pageNumber}`,
@@ -48,6 +42,5 @@ export async function preRenderAllFooters({
     preRenderedFooters.push(footerCanvas);
   }
 
-  const result = await Promise.all(preRenderedFooters);
-  return result;
+  return await Promise.all(preRenderedFooters);
 }

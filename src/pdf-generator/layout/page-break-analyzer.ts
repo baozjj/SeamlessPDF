@@ -17,13 +17,7 @@ import {
 
 /**
  * 分析指定行是否适合作为分页切割线
- *
- * 通过像素级分析判断该行是否为纯白空间或表格边框，
- * 同时检测表格顶部边框以避免不当分割
- *
- * @param yCoordinate - 要分析的Y坐标
- * @param canvas - 源Canvas元素
- * @returns PageBreakAnalysisResult - 分析结果
+ * 通过像素级分析判断该行是否为纯白空间或表格边框
  */
 export function analyzePageBreakLine(
   yCoordinate: number,
@@ -73,12 +67,7 @@ export function analyzePageBreakLine(
 
 /**
  * 向上搜索最优的分页切割点
- *
  * 从指定位置向上遍历，寻找第一个适合分页的干净切割线
- *
- * @param startYCoordinate - 搜索起始Y坐标
- * @param canvas - 源Canvas元素
- * @returns OptimalBreakPointResult - 最优切割点信息
  */
 export function findOptimalPageBreak(
   startYCoordinate: number,
@@ -89,7 +78,6 @@ export function findOptimalPageBreak(
     const analysisResult = analyzePageBreakLine(y, canvas);
 
     if (analysisResult.isCleanBreakPoint) {
-      // 如果是表格边框，确保分割点在边框完整底部
       if (analysisResult.isTableBorder) {
         const borderBottom = findTableBorderBottom(y, canvas);
         return {
