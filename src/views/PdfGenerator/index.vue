@@ -31,6 +31,10 @@ import ReportHeader from "@/components/ReportHeader.vue";
 import ReportContent from "@/components/ReportContent.vue";
 import ReportFooter from "@/components/ReportFooter.vue";
 
+defineOptions({
+  name: "PdfGenerator",
+});
+
 const isExporting = ref(false);
 
 const reportHeader = ref();
